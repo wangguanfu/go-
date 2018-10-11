@@ -1,0 +1,167 @@
+
+聊天室模块划分：
+
+	主go程：
+
+		创建监听socket， for 监听客户端连接请求，针对每一个客户端 维护 go程 —— HandlerConnect()
+
+	HandlerConnect:
+
+		写消息到 全局 channel 中， 存用户到 “在线用户列表”，广播用户上线、广播用户消息、广播用户下线。
+
+		查看在线用户列表、修改用户名、超时用户踢出。
+
+	Manager：
+
+		监听 全局channel 上的 读事件。 遍历“在线用户列表”完成广播操作。（ 配合writeMsgToClient一起完成 ）
+
+	writeMsgToClient：
+
+		读 “本用户的”channel 数据。将读到的内容，写回给客户端。	
+
+	匿名go程：
+
+		管理用户聊天、查询、改名实现。
+
+	全局数据结构：
+
+		全局channel： message。接收用户上线、下线、广播 消息
+
+		在线用户列表：map[key]value		key : IP+port	value : 客户端结构体
+
+		客户端结构体： Name、Addr、Channel。  	Name == Addr == IP+port
+
+广播用户上线：
+
+	1.  main 中 , 创建监听套接字， 循环 监听客户端连接请求， 有客户端连接上来，启动go程  HandlerConnect
+
+	2.  实现 HandlerConnect 函数。 记得 defer conn
+
+	3.  全局位置，创建 客户端结构体类型	Clinet { Name、Addr、C }
+
+	4.  全局位置，声明 在线用户列表 map  OnlineMap[string]Client	—— key：IP+port	Value： 客户端结构体
+
+	5.  全局位置，创建 用于广播用户消息的 channel 
+
+	6.  继续实现 HandlerConnect ， 获取客户端 IP+port  		conn.RemoteAddr()
+
+	7.  使用 客户端 IP+port  初始化当前客户端结构体。	Name == Addr
+
+	8.  创建 Manger go程， 在监听客户端连接请求 Accept 之前。
+
+		1）初始化 在线用户列表map， 
+
+		2）循环读取 全局message ，
+
+		3）遍历在线用户列表，将从message 中读到的数据，写给用户自带channel
+
+	9.  将新用户存入在线用户列表。onlineMap[IP+port]客户端结构体
+
+	10.  创建 读取 用户自带 channel go程 —— WriteMsg2Clinet（clnt，conn）。 
+
+		1）循环遍历 用户自带channel 中 是否有数据。 无： 阻塞；	有：读出来，写给 客户端。
+
+	11.  组织“用户上线”广播消息。（ [IP+port] 用户名 ：login ） 写入 全局channel —— 阻塞的 Manager go程，被激活。完成广播
+
+	12.  在 HandlerConnect 结尾处，添加 死循环for ，防止 该go程提早结束。
+
+	
+广播用户聊天内容：
+	
+	1.  创建一个用于监听用户发送的聊天信息的 匿名 go 程
+
+	2.  for 循环 Read socket 上是否有用户聊天数据。 读到 保存至 buf 
+
+	3.  当 Read 返回 n == 0 表示对端关闭。 对应的 当前 go程结束。
+
+	4.  封装函数，MakeMsg —— 组织待广播的消息（上线、聊天内容、下线）。
+
+	5.  将 封装好的用户聊天内容，写入 全局channel 。 —— 可以“自动”广播其他在线用户。
+
+
+查询在线用户列表：
+
+	1. 重新获取用户 消息。 去除结尾 \n —— msg := string(buf[:n-1])
+
+	2. 判断 消息内容是否是 “who” 
+
+	3. 如果是， 遍历在线用户列表。 将所有在线用户信息，写给当前客户端。
+
+	4. 如果不是，将 封装好的用户聊天内容，写入 全局channel 
+
+
+修改在线用户名：
+
+	1.  判断 消息内容是否是以 “rename|”开头
+
+	2.  拆分字符串，获取用户自定义 用户名
+
+	3.  更新 Client 结构体中的 Name
+
+	4.  更新 在现用户列表 OnlineMap ，新用户覆盖原有用户。
+
+	5.  提示用户 改名成功。
+
+用户下线：
+
+	1.  创建一个 判断用户是否下线的 channel,  创建在匿名go程 之前。		isQuit := make(chan bool)
+
+	2.  当 read 返回值 == 0 ， 向 isQuit 写入 true。
+
+	3.  将 HandlerConnect 结尾处，死循环for 中添加 select 关键字。 监听  isQuit 读事件。
+
+	4.  当 select 监听的  isQuit 解除阻塞， 说明用户下线。
+
+		1） 将用户从在线用户列表摘除		delete(OnlineMap,  netAddr)
+
+		2） 广播给其他用户，当前用户结束。	message <- 用户下线消息
+
+		3） 关闭 用户自带 channel —— 结束 WriteMsg2Client go程
+
+		4） 将当前 go 程（HandlerConnect ） 结束。
+
+超时强踢：
+
+	1. 在 select 中添加 case 监听 <-time.After(超时时长) 
+
+	2. 当 该case满足时： 1） 摘除该用户 2）广播用户被强踢 3） 关闭用户自带channel——>结束 WriteMsg2Client go程   4) 将当前 go 程
+
+	3. 在用户聊天信息 匿名go程创建之前， 创建 hasChat ， 用于在用户有活动动作时， 重置 超时时间。
+
+	4. 在select 中添加 case 监听 hasChat 的读事件。
+
+	5. 在 用户改名、查询在线列表、发送聊信息 3 个分支之后他， 添加 hasChat 写事件。
+
+
+
+		
+
+
+
+	
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	

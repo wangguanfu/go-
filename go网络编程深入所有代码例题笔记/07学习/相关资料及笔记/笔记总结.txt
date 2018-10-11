@@ -1,0 +1,212 @@
+
+TCP通信：
+	3次握手：
+		1、主动： 发送 SYN 标志位。
+
+		2、被动：接收 SYN、同时回复  ACK 并且发送SYN
+
+		3、主动： 发送 ACK 标志位。 —————— Accpet()  / Dail()
+
+	4次挥手：
+		1、主动关闭连接：发送 FIN 标志位。
+
+		2、被动关闭连接：接收 FIN、同时回复  ACK 	——  半关闭完成。
+
+		3、被动关闭连接：发送 FIN 标志位。
+
+		4、主动关闭连接：接收 FIN、同时回复  ACK 	——  Close()/Close() —— 4次挥手完成。
+
+TCP状态转换：
+
+	1. 主动端：
+
+		CLOSE --> SYN --> SYN_SEND状态 --> ESTABLISHED状态（数据通信期间处于的状态） ---> FIN --> FIN_WAIT_1状态。
+
+		---> 接收 ACK --->  FIN_WAIT_2状态 (半关闭—— 只出现在主动端) ---> 接收FIN、回ACK ——> TIME_WAIT (等2MSL)
+
+		---> 确保最后一个ACK能被对端收到。(只出现在主动端) 
+	2. 被动端：
+
+		CLOSE --> LISTEN ---> ESTABLISHED状态（数据通信期间处于的状态） ---> 接收  FIN、回复ACK --> 
+
+		CLOSE_WAIT(对应 对端处于 半关闭) --> 发送FIN --> LAST_ACK ---> 接收ACK ---> CLOSE 
+
+查看状态命令：
+
+	windows：netstat -an | findstr 8001（端口号）
+
+	Linux： netstat -an | grep 8001
+
+TCP:
+	面向连接的，可靠的数据包传递。
+
+	TCP通信不会丢包 —— 错误！！！   可以丢包重传（回执）
+
+UDP：	
+	无连接的， 不可靠的报文传输。
+
+	UDP通信会丢包，无丢包重传机制 —— 正确！！！ 
+
+
+UDP简单服务器：
+
+	1. 获取 服务器的 UDP地址结构体    srvAddr := ResolveUDPAddr（“udp”，“IP+port”）
+
+	2. 创建 用于数据通信套接字。   conn := ListenUDP("udp", srvAddr )
+
+	3. 读取客户端发送数据。  n, cltAddr, err :=  conn.ReadFromUDP(buf)
+
+	4. 回写数据给客户端。 conn.WriteToUDP("数据内容"， cltAddr )
+
+UDP客户端：
+
+	与TCP通信客户端实现手法一致。
+
+	net.Dial("udp", server 的IP+port)
+
+
+UDP并发服务器： ———— UDP 默认支持并发。
+
+	1. 获取 服务器的 UDP地址结构体    srvAddr := ResolveUDPAddr（“udp”，“IP+port”）
+
+	2. 创建 用于数据通信套接字。   conn := ListenUDP("udp", srvAddr )
+
+	3. for 循环 读取客户端发送的数据 for  {
+					n, cltAddr, err :=  conn.ReadFromUDP(buf)
+				 }
+
+	4. 创建 go 程 完成 写操作，提高程序的并行效率。
+
+			go func() {
+ 				conn.WriteToUDP("数据内容"， cltAddr )	
+			}()
+
+	5. 由于UDP没有建立连接过程。所以 TCP 通信状态 对于 UDP 无效。
+
+UDP并发客户端：
+
+	并发读取 键盘 和  conn。 编码实现参考 TCP 并发客户端实现。	
+
+	修改内容： net.Dial("udp", server 的IP+port)
+
+
+比对 TCP、 UDP 优缺点、使用场景：
+
+			优点 					缺点
+
+	TCP :	稳定、安全、顺序				开销大， 数据传递慢、编码较复杂		
+
+	UDP : 	速度快、资源开销小、编码简洁			稳定性差、安全性低、数据无序
+
+          使用场景：
+
+	TCP： 对数据安全、稳定性要求较高的场合，大数据传递。 文件、图片、视频。。 。上传、下载。
+
+	UDP：对数据的实时性要求较高的场合。 视频电话、视频会议、在线直播、在线游戏。
+
+获取命令行参数：
+
+	os.Args 	提取命令行参数，保存成 []string
+
+	使用格式： go run  xxx.go   arg1 arg2 arg3 arg4 ...
+
+	获取命令行参数：
+
+		arg[0]: 	xxx.go ——> xxx.exe 的绝对路径
+
+		arg[1]: arg1
+		arg[2]: arg2
+		arg[3]: arg3	
+		....
+获取文件属性：
+
+	os.Stat(文件访问绝对路径)  ——> fileInfo interface {  Name()  Size()  }
+
+	提取文件 不带路径的“文件名”
+
+
+网络文件传输：
+
+	发送端：（client）
+
+		1.  建立连接请求 net.Dial() ——> conn 	defer conn.Close()
+
+		2.  通过命令行参数，提取 文件名（带路径） os.Args
+
+		3.  获取文件属性 ，提取 文件名（不带路径）os.Stat()
+
+		4.  发送文件名 给 接收端	conn.Write
+
+		5.  接收对端回发的数据，确认是否是“ok”
+
+		6.  发送文件内容 给 接收端。封装 sendFile(文件名， conn) 函数
+
+			1） 只读方式打开 待发送文件
+
+			2） 创建 buf 读文件，存入buf中
+
+			3） 借助 conn 写 buf中的 数据到 接收端 —— 读多少、写多少。
+
+			4） 判断文件读取、发送完毕。结束 conn 。断开连接。
+
+	接收端：（sever）
+
+		1.  创建监听套接字 listener := net.Listen()
+
+		2.  阻塞等待客户端连接请求。 conn = listener.Accept()
+
+		3.  读取发送端发送的文件名（不含路径）-- 保存
+
+		4.  回复“ok”给发送端。
+
+		5.  接收文件内容，保存成一个新文件。封装  RecvFile (文件名， conn) 函数
+
+			1） os.Create() 按文件名创建文件。 -- f
+
+			2） 从 conn 中读取文件内容。
+
+			3） 使用 f 写到本地新建文件中。 —— 读多少、写多少
+
+			4） 判断文件读取完毕。结束 conn 。断开连接。
+
+
+		
+
+			
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

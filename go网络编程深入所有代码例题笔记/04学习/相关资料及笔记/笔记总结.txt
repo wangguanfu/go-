@@ -1,0 +1,229 @@
+
+系统文件： 在程序启动运行时，自动打开，运行结束，自动关闭。
+
+	键盘（硬件）—— 标准输入（文件）stdin  —— 0
+
+	屏幕（硬件）—— 标准输出（文件）stdout	—— 1
+
+	屏幕（硬件）—— 标准错误（文件）stderr	—— 2
+
+
+channel： 通道、管道。 一个读端、一个写端。
+
+	创建 ：  make(chan关键字  数据类型，容量)  ——  make(chan bool，0)
+
+	无缓冲特性： 	
+		同一时刻，同时有 读、写两端把持 channel。
+
+		如果只有读端，没有写端，那么 “读端”阻塞。
+
+		如果只有写端，没有读端，那么 “写端”阻塞。
+
+	读channel： 	<- channel 
+
+	写channel：	 channel <- 数据
+
+主子go程交替输出：
+
+	子先写 i 到 ch ， 子写stdout。写 ch2 。 主go程读 ch ，读ch2， 写stdout。 目的通知 子 go程 进行下一轮的写操作。
+
+channel 使用注意事项：
+
+	1.  在一个 goroutine 中使用 一个 channel 的 read、write。
+
+		fatal error: all goroutines are asleep - deadlock!
+
+	2.  在不同 go 程 中，使用无缓冲 channel 通信， 同时有 read 、 write 两端。
+
+	3.  在创建子 go 程之前，对 channel 进行 读、写操作。
+
+channel类型：
+
+	无缓冲channel：	完成数据通信 同步
+
+		ch :=make(chan int)	 	==  	cha :=make(chan int, 0)
+
+		不能在 channel 中存放任何数据。 len()/cap() --> 0
+
+	有缓冲channel：
+
+		channel 中自带缓冲区。创建时可以指定缓冲区的大小。	
+
+		w：直到缓冲区被填满后，写端才会阻塞。
+
+		r：缓冲区被读空，读端才会阻塞。
+
+		len：代表缓冲区中，剩余元素个数，
+
+		cap：代表缓冲区的容量。
+
+同步通信： 数据发送端，和数据接收端，必须同时在线。	—— 无缓冲channel
+
+	 打电话。
+
+异步通信：数据发送端，发送完数据，立即返回。数据接收端有可能立即读取，也可能延迟处理。 —— 有缓冲channel
+
+	 发信息。短信。
+
+关闭channel：
+	
+	关闭channel方法：close(channel名称）
+
+	判断是否关闭：
+
+	 方法1：    if  value, ok := <-ch; ok == true {
+
+		1)  如果写端没有写数据，也没有关闭。<-ch; 会阻塞  ---【重点】
+
+		2）如果写端写数据， value 保存 <-ch 读到的数据。 ok 被设置为 true
+
+		3）如果写端关闭。 value 为数据类型默认值。ok 被设置为 false
+
+		1. 对一个已经关闭的channel “写”操作，报错！
+
+			panic: send on closed channel
+
+		2. 对一个已经关闭的channel “读”操作，不报错！会读到数据类型的 默认值。
+
+	方法2： 简便判断 channel 关闭。—— range 
+
+		for num := range ch {	【注意】：ch 不能使用 <-ch
+		}
+
+channel按数据传递方向划分：
+
+	1. 双向channel
+
+		make(chan int)
+
+		双向channel既可以给 单向读channel赋值，也可以给单向写channel赋值。
+
+	2. 单向写channel
+
+		var send chan<- int。
+
+		不能对单向写channel 进行 读操作。
+
+	3. 单向读channel
+
+		var recv  <-chan  int
+
+		不能对单向读channel 进行 写操作。
+
+	单向 channel 不能给双向 channel 赋值。 单向读channel 不能关闭。错误：	invalid operation: close(recv) (cannot close receive-only channel)
+
+	channel 作为函数参数传参时，传递的是 “引用”
+
+生产者、消费者模型:
+
+	生产者模块、消费者模块、缓冲区
+
+	缓冲区作用：	1. 解耦： 生产者和消费者之间 降低耦合度。  任意一方修改，不会直接影响对端。
+
+			2. 实现并发：借助异步通信机制，在生产者、消费者等多个 go程间实现并行通信。
+
+			3. 缓存：借助缓冲区，缓存数据，从而提高生产者、消费者效率。
+
+	练习：实现生产者、消费者模型。 模拟订单。
+
+定时器：
+	Timer： 一次性定时。
+
+		1. Timer 定时：
+
+			1）.  创建 Timer 对象。
+
+				myTimer  := time.NewTimer(time.Second * 2)
+
+			2）. 从 Timer 对象的 C 成员变量 读。
+
+				默认读 —— 阻塞，定时时长到达后，系统写入当前时间，解除阻塞。
+		2. Time.After() 
+
+			将上两步 合并。
+
+			time := <-time.After(time.Second * 2)
+			
+			默认读 —— 阻塞，定时时长到达后，系统写入当前时间，解除阻塞。
+
+
+		3. Timer 的停止
+
+			myTimer  := time.NewTimer(time.Second * 2)
+
+			myTimer.stop()
+
+		4. Timer 的重置
+
+			myTimer  := time.NewTimer(time.Second * 20)
+
+			myTimer.Reset(time.Second * 2)
+
+			<-myTimer.C  这个读操作，2秒后会被执行。
+			
+	Ticker： 周期性定时。
+
+		1） 创建 Ticker 对象。
+
+			myTicker  := time.NewTicker(time.Second * 2)
+
+		2） 在 for 循环中 取 myTicker.C 中的数据（系统当前时间）
+
+			for {
+				<- myTicker.C	// 每隔 2 秒，系统会向 myTicker.C channel 中写时间。
+			}
+
+		
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	
+
+
+
+		

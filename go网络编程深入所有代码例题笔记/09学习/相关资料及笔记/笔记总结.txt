@@ -1,0 +1,162 @@
+
+DNS服务器：
+
+	帮助访问 web服务器的 客户端（浏览器）获取域名所对应的 IP地址。
+
+web服务器（http服务器）：
+
+	给外部客户端（浏览器）提供请求并应答数据内容的  服务程序（进程）。
+
+客户端访问网站流程：
+
+	1.  客户端（浏览器）——> DNS服务器 ——> 获取目标网站 的服务器IP地址
+
+	2.  客户端（浏览器）——> 服务器IP地址 ——> WEB服务器 ——> 发送请求数据包。——> WEB服务器 解析请求包 ——> 应答数据。
+
+超文本传输协议：
+
+	HTTP (明文) ——> TLS、SSL ——> HTTPS（加密）
+
+URL：统一资源定位。
+
+	在网络环境中唯一指定一个 数据资源。格式： 协议 IP+port(域名)  路径名  文件名。
+
+出错处理函数封装：
+	
+         func showErr(err error, info string)  {
+	if err != nil {
+		fmt.Println(info, " err:", err)
+		//return		// 返回当前函数调用
+		os.Exit(-1)
+	}
+         }
+
+http请求协议格式：
+
+	请求行： 方法 “空格” 请求文件路径 “空格” 协议版本号  \r\n
+
+	请求头： 格式： key : value 
+
+		Host：127.0.0.1:8000
+
+	空行：    \r\n ——代表 请求头 结束。
+
+	请求包体：多数为空。GET
+
+		请求服务器时带有的数据。（post 方法使用）
+
+回调函数：
+	本质：函数指针。
+
+	type FUNCP func（x int, y string）bool 
+
+	用户自定义个一函数，但不直接调用它。通过函数指针传参给其他函数，在满足某种条件时再调用。 或者由系统自动调用。
+
+
+---实现web服务器
+
+---模拟浏览器实现客户端
+
+http协议应答包格式：
+
+	应答行：协议版本号 “空格”状态码 “空格”状态描述
+
+	应答头：格式： key : value 
+
+	空行 ： \r\n
+
+	应答包包体：多数不为空。
+
+----------------------------Go语言下的 net.Http 编程。
+
+http包web服务器创建：—— http 应答协议
+
+	func handler(w http.ResponseWriter,  r *http.Request) —— 回调函数	
+
+		w: 写回给浏览器数据
+
+			w.Write([]byte("hello http")) 	//给客户端回复数据
+
+		r：读取浏览器发送数据
+
+		http.Request 结构体，包含成员：
+
+			r.Method：请求方法
+
+			r.URL：浏览器发送请求文件路径
+
+			r.Header：请求头
+
+			r.Body：请求包体	
+
+			r. RemoteAddr：客户端网络地址
+
+	1.  注册处理函数。http.HandlerFunc（文件路径， 回调函数）	
+
+	2. 绑定服务器监听地址   http.ListenAndServe("IP+port", nil )
+	
+
+练习：目录文件 web服务器。
+
+	favicon.ico
+
+	1.  注册回调函数 http.HandlerFunc（“/”, handConn）
+
+	2.  绑定服务器监听地址  http.ListenAndServe 
+
+	3.  在回调函数handConn 中，获取用户请求文件名
+
+	4. 封装函数读取请求文件内，回发给浏览器 OpenAndSendFile(请求文件名,  w http.ResponseWriter)
+
+		1) 拼接文件请求的“绝对路径”
+
+		2）只读打开文件。不存在。使用“w”——> 文件不存在提示
+
+		3）存在，for 循环 read。 w ——> 写回文件内容给浏览器
+		
+http包下的 客户端创建：—— http 请求协议
+
+	1. func Get(url string) (resp *Response, err error) 
+
+		url： 请求的服务器 URL。 
+
+	2. 返回 Response 结构体 {  状态码、 应答头部、 响应包体 。。。 }
+
+	3. defer  resp.Body.Close()
+
+	4. 循环 从 Body 中 read 取 服务器回发的数据内容 --- 存入buf
+
+	5. 从 buf 中获取 需要的数据。
+	
+	
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	
